@@ -1,4 +1,4 @@
 flask
 pandas
 torch
-transformer
+transformers==4.51.3
