@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>감정 분류 웹앱</title>
+    <style>
+        .negative {
+            background-color: lightblue;
+            border: 1px solid blue; /* 부정적 문장 테두리 추가 */
+            padding: 5px; /* 내부 여백 추가 */
+            margin: 2px; /* 외부 여백 추가 */
+        }
+        .neutral {
+            background-color: rgb(255, 255, 255);
+            border: 1px solid rgb(182, 181, 181); /* 중립적 문장 테두리 추가 */
+            padding: 5px;
+            margin: 2px;
+        }
+        .positive {
+            background-color: rgb(189, 255, 122);
+            border: 1px solid green; /* 긍정적 문장 테두리 추가 */
+            padding: 5px;
+            margin: 2px;
+        }
+        .sentence {
+            display: inline-block; /* span 태그를 블록 요소처럼 표시 */
+        }
+    </style>
+</head>
+<body>
+    <div style="text-align:center; margin-top:50px;">
+        <h1>감정 분류</h1>
+    </div>
+    <div style="text-align:center; margin-top:50px;">
+        <textarea id="inputText" placeholder="문장을 입력하세요" rows="4" cols="50"></textarea>
+        <br>
+        <button onclick="sendText()">분석</button>
+        <button onclick="startRecognition()">🎙️</button>
+        <div id="result"></div>
+    </div>
+    <script>
+        let recognition;
+        let analysisData = []; // 분석 결과를 저장할 변수
+
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.lang = 'ko-KR';
+            recognition.onresult = function(event) {
+                let transcript = event.results[0][0].transcript;
+                document.getElementById("inputText").value = transcript;
+            }
+        } else {
+            alert("음성 인식이 지원되지 않는 브라우저입니다.");
+        }
+
+        function startRecognition(){
+            if(recognition) recognition.start();
+        }
+
+        function sendText(){
+            const text = document.getElementById("inputText").value;
+            fetch('/classify', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({text: text})
+            }).then(response => response.json())
+            .then(data => {
+                analysisData = data; // 분석 결과 저장
+                updateResult();
+            });
+        }
+
+        function updateResult() {
+            let resultHtml = "";
+            let negativeCount = 0;
+            let neutralCount = 0;
+            let positiveCount = 0;
+
+            analysisData.forEach((item, index) => {
+                let sentenceClass = "";
+                if (item.label === "부정적") {
+                    sentenceClass = "negative";
+                    negativeCount++;
+                } else if (item.label === "중립") {
+                    sentenceClass = "neutral";
+                    neutralCount++;
+                } else {
+                    sentenceClass = "positive";
+                    positiveCount++;
+                }
+                resultHtml += `<span class="${sentenceClass} sentence" data-index="${index}">${item.sentence} </span>`;
+            });
+
+            document.getElementById("result").innerHTML = resultHtml + `<br><br><b>최종 결과:</b><br>부정: ${negativeCount}개, 중립: ${neutralCount}개, 긍정: ${positiveCount}개`;
+
+            // 문장 클릭 이벤트 리스너 추가
+            document.querySelectorAll(".sentence").forEach(sentence => {
+                sentence.addEventListener("click", function(event) {
+                    const index = this.dataset.index;
+                    const rect = this.getBoundingClientRect();
+                    const options = document.createElement("div");
+                    options.style.position = "absolute";
+                    options.style.left = `${rect.left}px`;
+                    options.style.top = `${rect.bottom + window.scrollY + 5}px`; // 스크롤 위치 고려 및 약간의 여백 추가
+                    options.style.border = "1px solid #ccc";
+                    options.style.backgroundColor = "white";
+                    options.innerHTML = `<button data-action="negative">부정</button><button data-action="neutral">중립</button><button data-action="positive">긍정</button>`;
+                    document.body.appendChild(options);
+
+                    // 옵션 버튼 클릭 이벤트 리스너 추가
+                    options.querySelectorAll("button").forEach(button => {
+                        button.addEventListener("click", function() {
+                            const action = this.dataset.action;
+                            let newClass = "";
+                            if (action === "negative") {
+                                newClass = "negative";
+                                analysisData[index].label = "부정적";
+                            } else if (action === "neutral") {
+                                newClass = "neutral";
+                                analysisData[index].label = "중립";
+                            } else {
+                                newClass = "positive";
+                                analysisData[index].label = "긍정적";
+                            }
+                            sentence.className = `sentence ${newClass}`;
+                            document.body.removeChild(options);
+                            updateResult(); // 결과 업데이트
+                        });
+                    });
+
+                    // 외부 클릭 시 옵션 제거
+                    function removeOptions(event) {
+                        if (!options.contains(event.target) && event.target !== sentence) {
+                            document.body.removeChild(options);
+                            document.removeEventListener("click", removeOptions);
+                        }
+                    }
+                    document.addEventListener("click", removeOptions);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
